@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<title>로또 번호 생성기</title>
+<link rel="manifest" href="manifest.json">
+<style>
+:root{
+  --bg:#111827;--card:#1f2937;--line:#374151;--text:#f9fafb;--sub:#9ca3af;
+  --accent:#fbbf24;--ok:#34d399;--warn:#f87171;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Malgun Gothic",sans-serif;
+  min-height:100vh;padding-bottom:calc(64px + env(safe-area-inset-bottom))}
+header{padding:20px 16px 12px;border-bottom:1px solid var(--line)}
+header h1{font-size:18px;font-weight:700}
+header p{font-size:12px;color:var(--sub);margin-top:4px}
+main{padding:16px;max-width:520px;margin:0 auto}
+.tabbar{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);
+  border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);z-index:10}
+.tabbar button{flex:1;padding:12px 0 10px;background:none;border:none;color:var(--sub);
+  font-size:12px;font-weight:600;cursor:pointer}
+.tabbar button.on{color:var(--accent)}
+.tabbar button span{display:block;font-size:20px;margin-bottom:2px}
+section{display:none}section.on{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:12px}
+.card h2{font-size:14px;font-weight:700;margin-bottom:10px}
+.balls{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.ball{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-weight:700;font-size:14px;color:#111}
+.b1{background:#fbbf24}.b2{background:#60a5fa}.b3{background:#f87171}.b4{background:#9ca3af}.b5{background:#34d399}
+.plus{color:var(--sub);font-size:14px;margin:0 2px}
+.btn{width:100%;padding:14px;border:none;border-radius:12px;background:var(--accent);color:#111;
+  font-size:15px;font-weight:700;cursor:pointer}
+.btn.sub{background:var(--line);color:var(--text)}
+.btn:active{opacity:.85}
+.row{display:flex;gap:8px}
+.meta{font-size:12px;color:var(--sub);line-height:1.6}
+.game{padding:12px 0;border-bottom:1px solid var(--line)}
+.game:last-child{border-bottom:none}
+.game .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.game .top .label{font-size:12px;color:var(--sub);font-weight:600}
+.small{font-size:11px;color:var(--sub)}
+.tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:8px;background:var(--line);
+  color:var(--sub);margin:2px 4px 0 0}
+.statbar{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.statbar .num{width:26px;font-size:13px;font-weight:700;text-align:right}
+.statbar .bar{height:14px;background:var(--accent);border-radius:4px;min-width:2px}
+.statbar .cnt{font-size:11px;color:var(--sub)}
+.pill{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:30px;
+  border-radius:50%;font-size:13px;font-weight:700;color:#111;margin:3px}
+.hot{background:#f87171}.cold{background:#60a5fa}
+.savebtn{background:none;border:1px solid var(--line);color:var(--sub);border-radius:8px;
+  padding:4px 10px;font-size:12px;cursor:pointer}
+.result-win{color:var(--ok);font-weight:700}
+.result-lose{color:var(--sub)}
+.del{background:none;border:none;color:var(--warn);font-size:12px;cursor:pointer;padding:4px}
+select{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:8px;
+  padding:8px 12px;font-size:14px;width:100%}
+.notice{font-size:11px;color:var(--sub);line-height:1.6;padding:12px;background:var(--card);
+  border-radius:12px;border:1px dashed var(--line);margin-top:8px}
+</style>
+</head>
+<body>
+<header>
+  <h1>로또 번호 생성기</h1>
+  <p id="dataInfo">데이터 로딩 중…</p>
+</header>
+<main>
+
+<!-- 생성 -->
+<section id="tab-gen" class="on">
+  <div class="card">
+    <h2>비인기 조합 생성</h2>
+    <p class="meta" style="margin-bottom:12px">균등 무작위(CSPRNG) 생성 후 인기 패턴 7종을 배제한다.
+    확률은 모든 조합이 동일하며, 필터는 당첨 시 분할 인원 기댓값만 낮춘다.</p>
+    <div class="row">
+      <button class="btn" onclick="runGen(5)">5게임 생성</button>
+      <button class="btn sub" onclick="runGen(1)">1게임</button>
+    </div>
+  </div>
+  <div class="card" id="genResult" style="display:none">
+    <h2>생성 결과</h2>
+    <div id="genList"></div>
+  </div>
+  <div class="card">
+    <h2>배제 필터</h2>
+    <div class="meta">
+      · 생일 편중 — 1~31 구간 5개 이상<br>
+      · 연속수 3개 이상 · 등차수열<br>
+      · 핫넘버 top10 중 4개 이상 (1019회차 유형)<br>
+      · 직전 회차와 3개 이상 중복<br>
+      · 마킹 용지 같은 행·열 4개 이상, 대각선<br>
+      · 유명 조합 (1-2-3-4-5-6 등)
+    </div>
+  </div>
+  <div class="notice">이 앱은 당첨 확률을 높이지 않는다. 모든 조합의 1등 확률은 1/8,145,060으로 동일하며,
+  복권 구매의 기대수익은 마이너스다.</div>
+</section>
+
+<!-- 조회 -->
+<section id="tab-draw">
+  <div class="card">
+    <h2>회차 선택</h2>
+    <select id="drawSelect" onchange="showDraw()"></select>
+  </div>
+  <div class="card">
+    <div class="top" style="display:flex;justify-content:space-between;margin-bottom:10px">
+      <h2 id="drawTitle"></h2><span class="small" id="drawDate"></span>
+    </div>
+    <div class="balls" id="drawBalls"></div>
+  </div>
+</section>
+
+<!-- 통계 -->
+<section id="tab-stat">
+  <div class="card">
+    <h2>범위</h2>
+    <select id="statRange" onchange="renderStats()">
+      <option value="0">전체 회차</option>
+      <option value="52">최근 52회</option>
+      <option value="26">최근 26회</option>
+      <option value="10">최근 10회</option>
+    </select>
+  </div>
+  <div class="card">
+    <h2>핫넘버 top 10 <span class="small">(최다 출현)</span></h2>
+    <div id="hotPills"></div>
+  </div>
+  <div class="card">
+    <h2>콜드넘버 top 10 <span class="small">(최소 출현)</span></h2>
+    <div id="coldPills"></div>
+  </div>
+  <div class="card">
+    <h2>번호별 출현 빈도</h2>
+    <div id="freqBars"></div>
+  </div>
+  <div class="notice">출현 빈도는 과거 기록일 뿐 다음 회차와 무관하다. 핫넘버 조합은 오히려
+  구매 쏠림으로 당첨 시 분할 위험이 크다.</div>
+</section>
+
+<!-- 내 번호 -->
+<section id="tab-my">
+  <div class="card">
+    <h2>저장된 번호</h2>
+    <p class="meta" style="margin-bottom:8px">생성 탭에서 저장한 번호를 최신 회차와 자동 대조한다.</p>
+    <div id="myList"><p class="meta">저장된 번호 없음</p></div>
+  </div>
+</section>
+
+</main>
+
+<nav class="tabbar">
+  <button class="on" onclick="go('gen',this)"><span>🎲</span>생성</button>
+  <button onclick="go('draw',this)"><span>🔍</span>조회</button>
+  <button onclick="go('stat',this)"><span>📊</span>통계</button>
+  <button onclick="go('my',this)"><span>⭐</span>내 번호</button>
+</nav>
+
+<script>
+let DATA=[], HOT10=new Set(), LAST=new Set();
+
+const BLACKLIST=[[1,2,3,4,5,6],[4,8,15,16,23,42],[7,14,21,28,35,42],[5,10,15,20,25,30],[40,41,42,43,44,45]]
+  .map(a=>a.join(','));
+
+// ── 데이터 로드 ──
+fetch('data/lotto.json').then(r=>r.json()).then(d=>{
+  DATA=d;
+  const last=d[d.length-1];
+  LAST=new Set(last.n);
+  const freq=countFreq(d);
+  HOT10=new Set([...freq.entries()].sort((a,b)=>b[1]-a[1]).slice(0,10).map(e=>e[0]));
+  document.getElementById('dataInfo').textContent=
+    `1~${last.r}회차 · 최신 추첨 ${last.d}`;
+  initDrawSelect(); renderStats(); renderMy();
+}).catch(()=>{document.getElementById('dataInfo').textContent='데이터 로드 실패';});
+
+function countFreq(rows){
+  const c=new Map(); for(let i=1;i<=45;i++)c.set(i,0);
+  rows.forEach(r=>r.n.forEach(n=>c.set(n,c.get(n)+1)));
+  return c;
+}
+
+// ── 생성 ──
+function rand45(){
+  const buf=new Uint32Array(1);
+  let x; do{crypto.getRandomValues(buf); x=buf[0];}while(x>=4294967250); // 45의 배수 상한, 편향 제거
+  return (x%45)+1;
+}
+function pick6(){
+  const s=new Set(); while(s.size<6)s.add(rand45());
+  return [...s].sort((a,b)=>a-b);
+}
+function slipPos(n){return [Math.floor((n-1)/7),(n-1)%7];}
+function popularReason(s){
+  if(s.filter(n=>n<=31).length>=5)return'생일 편중';
+  let run=1;
+  for(let i=1;i<6;i++){run=(s[i]===s[i-1]+1)?run+1:1; if(run>=3)return'연속수 3개+';}
+  const diffs=new Set(); for(let i=1;i<6;i++)diffs.add(s[i]-s[i-1]);
+  if(diffs.size===1)return'등차수열';
+  if(s.filter(n=>HOT10.has(n)).length>=4)return'핫넘버 편중';
+  if(s.filter(n=>LAST.has(n)).length>=3)return'직전 회차 모방';
+  const pos=s.map(slipPos);
+  const rc={},cc={};
+  pos.forEach(p=>{rc[p[0]]=(rc[p[0]]||0)+1;cc[p[1]]=(cc[p[1]]||0)+1;});
+  if(Math.max(...Object.values(rc))>=4)return'용지 같은 행';
+  if(Math.max(...Object.values(cc))>=4)return'용지 같은 열';
+  let diag=true;
+  for(let i=1;i<6;i++){const a=pos[i-1],b=pos[i];
+    if(!(b[0]-a[0]===1&&Math.abs(b[1]-a[1])===1)){diag=false;break;}}
+  if(diag)return'용지 대각선';
+  if(BLACKLIST.includes(s.join(',')))return'유명 조합';
+  return null;
+}
+function genOne(){
+  let tries=0;
+  while(true){
+    const s=pick6(); tries++;
+    if(!popularReason(s))return{nums:s,tries};
+  }
+}
+function runGen(count){
+  const box=document.getElementById('genList');
+  box.innerHTML='';
+  document.getElementById('genResult').style.display='block';
+  for(let i=0;i<count;i++){
+    const g=genOne();
+    const div=document.createElement('div');
+    div.className='game';
+    div.innerHTML=`<div class="top"><span class="label">GAME ${i+1}
+      <span class="small">(필터 통과까지 ${g.tries}회 추출)</span></span>
+      <button class="savebtn" onclick='saveGame(${JSON.stringify(g.nums)},this)'>저장</button></div>
+      <div class="balls">${g.nums.map(ballHtml).join('')}</div>`;
+    box.appendChild(div);
+  }
+}
+function ballHtml(n){
+  const c=n<=10?'b1':n<=20?'b2':n<=30?'b3':n<=40?'b4':'b5';
+  return `<div class="ball ${c}">${n}</div>`;
+}
+
+// ── 조회 ──
+function initDrawSelect(){
+  const sel=document.getElementById('drawSelect');
+  sel.innerHTML=DATA.slice().reverse().map(r=>
+    `<option value="${r.r}">${r.r}회 (${r.d})</option>`).join('');
+  showDraw();
+}
+function showDraw(){
+  const r=DATA.find(x=>x.r==document.getElementById('drawSelect').value);
+  if(!r)return;
+  document.getElementById('drawTitle').textContent=`${r.r}회 당첨번호`;
+  document.getElementById('drawDate').textContent=r.d;
+  document.getElementById('drawBalls').innerHTML=
+    r.n.map(ballHtml).join('')+`<span class="plus">+</span>`+ballHtml(r.b);
+}
+
+// ── 통계 ──
+function renderStats(){
+  if(!DATA.length)return;
+  const range=+document.getElementById('statRange').value;
+  const rows=range?DATA.slice(-range):DATA;
+  const freq=countFreq(rows);
+  const sorted=[...freq.entries()].sort((a,b)=>b[1]-a[1]);
+  document.getElementById('hotPills').innerHTML=
+    sorted.slice(0,10).map(e=>`<span class="pill hot">${e[0]}</span>`).join('');
+  document.getElementById('coldPills').innerHTML=
+    sorted.slice(-10).reverse().map(e=>`<span class="pill cold">${e[0]}</span>`).join('');
+  const max=sorted[0][1];
+  document.getElementById('freqBars').innerHTML=
+    [...freq.entries()].map(([n,c])=>
+      `<div class="statbar"><span class="num">${n}</span>
+       <div class="bar" style="width:${c/max*70}%"></div>
+       <span class="cnt">${c}</span></div>`).join('');
+}
+
+// ── 내 번호 ──
+function saveGame(nums,btn){
+  const saved=JSON.parse(localStorage.getItem('myGames')||'[]');
+  saved.push({nums,savedAt:Date.now(),round:DATA[DATA.length-1].r+1});
+  localStorage.setItem('myGames',JSON.stringify(saved));
+  btn.textContent='저장됨'; btn.disabled=true;
+  renderMy();
+}
+function delGame(i){
+  const saved=JSON.parse(localStorage.getItem('myGames')||'[]');
+  saved.splice(i,1);
+  localStorage.setItem('myGames',JSON.stringify(saved));
+  renderMy();
+}
+function rankOf(match,bonusHit){
+  if(match===6)return'1등';
+  if(match===5&&bonusHit)return'2등';
+  if(match===5)return'3등';
+  if(match===4)return'4등';
+  if(match===3)return'5등';
+  return null;
+}
+function renderMy(){
+  const box=document.getElementById('myList');
+  const saved=JSON.parse(localStorage.getItem('myGames')||'[]');
+  if(!saved.length){box.innerHTML='<p class="meta">저장된 번호 없음</p>';return;}
+  box.innerHTML=saved.map((g,i)=>{
+    const target=DATA.find(r=>r.r===g.round);
+    let result;
+    if(!target){
+      result=`<span class="small">${g.round}회 추첨 대기</span>`;
+    }else{
+      const win=new Set(target.n);
+      const match=g.nums.filter(n=>win.has(n)).length;
+      const rank=rankOf(match,g.nums.includes(target.b));
+      result=rank
+        ?`<span class="result-win">${g.round}회 ${rank} (${match}개 일치)</span>`
+        :`<span class="result-lose">${g.round}회 낙첨 (${match}개 일치)</span>`;
+    }
+    return `<div class="game"><div class="top"><span class="label">${result}</span>
+      <button class="del" onclick="delGame(${i})">삭제</button></div>
+      <div class="balls">${g.nums.map(ballHtml).join('')}</div></div>`;
+  }).join('');
+}
+
+// ── 탭 ──
+function go(id,btn){
+  document.querySelectorAll('section').forEach(s=>s.classList.remove('on'));
+  document.getElementById('tab-'+id).classList.add('on');
+  document.querySelectorAll('.tabbar button').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+}
+
+// ── PWA ──
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');
+</script>
+</body>
+</html>
