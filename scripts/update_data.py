@@ -1,33 +1,48 @@
 # -*- coding: utf-8 -*-
-"""동행복권 API에서 신규 회차를 받아 data/lotto.json에 추가한다."""
+"""동행복권 API에서 신규 회차를 받아 data/lotto.json에 추가한다.
+
+2026년 사이트 개편으로 구 API(common.do?method=getLottoNumber)가 폐지되어
+신 API(lt645/selectPstLt645InfoNew.do)를 사용한다.
+center 요청은 기준 회차 아래 5개·위 4개(총 10회차)를 반환하므로,
+마지막 보유 회차를 기준으로 반복 요청해 그보다 큰 회차를 수집한다.
+"""
 import json, sys, urllib.request
 
 PATH = 'data/lotto.json'
-API = 'https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo={}'
+API = ('https://www.dhlottery.co.kr/lt645/selectPstLt645InfoNew.do'
+       '?srchDir=center&srchLtEpsd={}')
+UA = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+      '(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36')
 
 with open(PATH, encoding='utf-8') as f:
     data = json.load(f)
 last = data[-1]['r']
 
+def fetch_window(rnd):
+    req = urllib.request.Request(API.format(rnd), headers={'User-Agent': UA})
+    with urllib.request.urlopen(req, timeout=15) as res:
+        return json.load(res)['data']['list']
+
 added = 0
-rnd = last + 1
 while True:
     try:
-        with urllib.request.urlopen(API.format(rnd), timeout=10) as res:
-            j = json.load(res)
+        rows = fetch_window(last)
     except Exception as e:
-        print(f'{rnd}회 요청 실패: {e}'); break
-    if j.get('returnValue') != 'success':
-        break  # 아직 추첨 전
-    data.append({
-        'r': j['drwNo'],
-        'd': j['drwNoDate'].replace('-', '.'),
-        'n': sorted([j[f'drwtNo{i}'] for i in range(1, 7)]),
-        'b': j['bnusNo'],
-    })
-    print(f"{j['drwNo']}회 추가")
-    added += 1
-    rnd += 1
+        print(f'{last}회 기준 요청 실패: {e}'); break
+    new = sorted((r for r in rows if r['ltEpsd'] > last), key=lambda r: r['ltEpsd'])
+    if not new:
+        break  # 이후 회차 없음(최신 상태)
+    for r in new:
+        d = r['ltRflYmd']  # "20260905"
+        data.append({
+            'r': r['ltEpsd'],
+            'd': f'{d[:4]}.{d[4:6]}.{d[6:]}',
+            'n': sorted(r[f'tm{i}WnNo'] for i in range(1, 7)),
+            'b': r['bnsWnNo'],
+        })
+        print(f"{r['ltEpsd']}회 추가")
+        added += 1
+    last = data[-1]['r']
 
 if added:
     with open(PATH, 'w', encoding='utf-8') as f:
